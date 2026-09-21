@@ -82,7 +82,7 @@ ProbeDeck-lite-theme 是 [gg949/ProbeDeck](https://github.com/gg949/ProbeDeck/) 
 ProbeDeck 后台 → **外观设置** → 主题地址（`theme_url`）填：
 
 ```
-https://github.com/<你的用户名>/<仓库名>/tree/<分支名>
+https://github.com/gg949/probedeck-lite-theme/tree/main
 ```
 
 如果主题放在子目录里，就指到那一级：
