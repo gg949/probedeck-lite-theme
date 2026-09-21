@@ -9,9 +9,7 @@
 
 ## 一、这是什么
 
-ProbeDeck-lite-theme 是 [gg949/ProbeDeck](https://github.com/gg949/ProbeDeck/) 的一个第三方主题，把 Guoba 探针面板的
-界面原样搬到 ProbeDeck 上：同样的三视图切换、同样的五套皮肤、同样的卡片信息排布，
-但数据全部来自 ProbeDeck 的公开 API 与 WebSocket。
+ProbeDeck-lite-theme 是 [gg949/ProbeDeck](https://github.com/gg949/ProbeDeck/) 的一个第三方主题
 
 原面板用 Leaflet + unpkg / jsdelivr 的 CDN 引用，ProbeDeck 的 CSP 不允许，因此本主题做了两处替换：
 
