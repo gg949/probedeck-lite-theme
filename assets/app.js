@@ -203,8 +203,44 @@
     detailWs: null,
     detailRangeKey: '24',
     rangeUpdating: false,   // 时间范围切换请求中,防重复
-    onlineIds: {}
+    onlineIds: {},
+    pingNodes: []  // 后台 Ping 节点设置解析结果(名称+颜色)
   };
+
+  /* ── 探测线路表(与面板后台 Ping 节点设置一致)──────────
+     顺序即后端线路顺序:ct/cu/cm/bd + node_1..node_4;
+     显示名从 /api/config 读取(custom_*_name / node_N_name),未配置时用默认名 */
+  var CARRIERS = [
+    { key: 'ct', cfgKey: 'custom_ct_name', def: '电信', color: '#ec4899' },
+    { key: 'cu', cfgKey: 'custom_cu_name', def: '联通', color: '#10b981' },
+    { key: 'cm', cfgKey: 'custom_cm_name', def: '移动', color: '#3b82f6' },
+    { key: 'bd', cfgKey: 'custom_bd_name', def: 'BD', color: '#f59e0b' },
+    { key: 'node_1', cfgKey: 'node_1_name', def: 'Node 1', color: '#8b5cf6' },
+    { key: 'node_2', cfgKey: 'node_2_name', def: 'Node 2', color: '#f97316' },
+    { key: 'node_3', cfgKey: 'node_3_name', def: 'Node 3', color: '#06b6d4' },
+    { key: 'node_4', cfgKey: 'node_4_name', def: 'Node 4', color: '#84cc16' }
+  ];
+
+  function resolvePingNodes() {
+    var cfg = state.config || {};
+    return CARRIERS.map(function (c) {
+      var raw = cfg[c.cfgKey];
+      var name = (typeof raw === 'string' && raw.trim()) ? raw.trim() : c.def;
+      return { key: c.key, name: name, color: c.color };
+    });
+  }
+
+  function pingNodes() {
+    if (!state.pingNodes || !state.pingNodes.length) state.pingNodes = resolvePingNodes();
+    return state.pingNodes;
+  }
+
+  // 延时/丢包取值约定:false/缺失 = 未配置或未上报(不显示);null = 超时(断线);0 为有效值
+  function pingVal(v) {
+    if (v === false || v === undefined || v === null || v === '') return null;
+    var n = Number(v);
+    return isNaN(n) ? null : n;
+  }
 
   function apiBase() {
     var meta = document.querySelector('meta[name="apiBase"]');
@@ -239,14 +275,18 @@
     });
   }
 
-  /* ── 在线判定 ───────────────────────────────────────── */
-  var ONLINE_THRESHOLD_MS = 300000; // 与面板一致：5 分钟
+  /* ── 在线判定(阈值读面板设置 online_threshold_seconds,默认 300s) ── */
+  function onlineThresholdMs() {
+    var v = state.config && Number(state.config.online_threshold_seconds);
+    return (v > 0 ? v : 300) * 1000;
+  }
   function computeOnlineMap() {
     var now = Date.now();
+    var thr = onlineThresholdMs();
     var m = {};
     state.servers.forEach(function (s) {
       var last = Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0);
-      m[s.id] = (now - last) <= ONLINE_THRESHOLD_MS;
+      m[s.id] = (now - last) <= thr;
     });
     return m;
   }
@@ -417,14 +457,21 @@
     var last = Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0);
     meta.push('更新: ' + fmtAgo(last));
 
+    // 标签 + IPv4/IPv6 徽章放在同一行
     var badges = '';
+    if (s.tags) {
+      String(s.tags).split(',').forEach(function (t) {
+        var tag = t.trim();
+        if (tag) badges += '<span class="badge badge-tag">' + esc(tag) + '</span>';
+      });
+    }
     if (s.ip_v4 === '1') badges += '<span class="badge badge-v4">IPv4</span>';
     if (s.ip_v6 === '1') badges += '<span class="badge badge-v6">IPv6</span>';
 
-    var pings = ['ct', 'cu', 'cm', 'bd'];
+    // 延迟小图:线路名与面板后台 Ping 节点设置一致(取前四条主线路)
     var pingHtml = '<div class="ping-box">';
-    pings.forEach(function (k) {
-      pingHtml += '<span>' + esc((sc['custom_' + k + '_name']) || { ct: '电信', cu: '联通', cm: '移动', bd: '字节' }[k]) + ' ' + fmtPing(s['ping_' + k]) + '</span>';
+    pingNodes().slice(0, 4).forEach(function (n) {
+      pingHtml += '<span>' + esc(n.name) + ' ' + fmtPing(s['ping_' + n.key]) + '</span>';
     });
     pingHtml += '</div>';
 
@@ -587,7 +634,7 @@
   function drawDetail(s, first) {
     var app = $('#app');
     var online = state.onlineIds[s.id] != null ? state.onlineIds[s.id] :
-      (Date.now() - Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0)) <= ONLINE_THRESHOLD_MS;
+      (Date.now() - Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0)) <= onlineThresholdMs();
     var sc = state.sysConfig || {};
     var flag = flagImg(s.region, 24, '');
     var info = [
@@ -637,10 +684,10 @@
       }).join('') +
       '  </div>' +
       '</div>' +
-      '<div class="charts-grid">' + chartsHtml + '</div>' +
+      '<div class="charts-grid">' + chartsHtml +
       latencyCardHtml(s, sc) +
       diskIoCardHtml(s) +
-      gpuCardHtml(s) +
+      gpuCardHtml(s) + '</div>' +
       '<div class="powered">' +
       '  <div class="visit" id="visit-box"></div>' +
       '  <div>Powered by <a href="https://github.com/gg949/ProbeDeck/" target="_blank" rel="noopener">ProbeDeck</a> <span id="ver"></span></div>' +
@@ -655,39 +702,32 @@
 
   function chartCard(title, id, kind) {
     var extra = '';
-    if (kind === 'ram') extra = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:5px" id="' + id + '-sub"></div>';
-    if (kind === 'disk') {
-      extra = '<div class="disk-bar-wrap"><div id="' + id + '-bar" style="height:100%;width:0%;background:#34d399"></div></div>' +
-        '<div class="disk-detail" id="' + id + '-detail"></div>';
-    }
+    if (kind === 'ram' || kind === 'disk') extra = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:5px" id="' + id + '-sub"></div>';
     var valId = id + '-val';
     return '<div class="chart-card">' +
       '<h3>' + esc(title) + ' <span class="chart-val" id="' + valId + '"></span></h3>' +
       extra +
-      (kind === 'disk' ? '' : '<div class="chart-box"><canvas id="' + id + '"></canvas></div>') +
+      '<div class="chart-box"><canvas id="' + id + '"></canvas></div>' +
       '</div>';
   }
 
   function latencyCardHtml(s, sc) {
-    // 三网延迟趋势图(全宽):电信/联通/移动/字节 四条曲线 + 平均延迟/丢包徽章
+    // 延迟趋势图(全宽):线路与显示名跟随后台 Ping 节点设置 + 平均延迟/丢包徽章
     return '<div class="chart-card chart-full"><h3>延迟 / 丢包 <span class="chart-val" id="d-ping-badges"></span></h3>' +
       '<div class="chart-box chart-box-lg"><canvas id="d-ping"></canvas></div></div>';
   }
 
   function diskIoCardHtml(s) {
     var d = s.disk;
-    var rows = '';
-    if (d && (d.read_bps || d.write_bps || d.read_iops || d.write_iops || d.util || d.await_ms)) {
-      rows =
-        '<div class="kv-row"><span>读取</span><span>' + fmtBytesSpeed(d.read_bps) + '</span></div>' +
-        '<div class="kv-row"><span>写入</span><span>' + fmtBytesSpeed(d.write_bps) + '</span></div>' +
-        '<div class="kv-row"><span>IOPS</span><span>' + (d.read_iops || 0) + ' / ' + (d.write_iops || 0) + '</span></div>' +
-        '<div class="kv-row"><span>await</span><span>' + (d.await_ms || 0) + ' ms</span></div>' +
-        '<div class="kv-row"><span>利用率</span><span>' + (d.util || 0) + '%</span></div>';
-    } else {
-      rows = '<div class="kv-row"><span>状态</span><span>未上报磁盘 IO</span></div>';
+    var hasData = !!(d && (d.read_bps || d.write_bps || d.read_iops || d.write_iops || d.util || d.await_ms));
+    if (!hasData) {
+      // 探针未上报磁盘 IO(旧探针/旧数据/全 0)时不展示图表(主题开发文档约定)
+      return '<div class="chart-card chart-full"><h3>磁盘 IO <span class="chart-val">未上报</span></h3>' +
+        '<div class="kv-list"><div class="kv-row"><span>状态</span><span>未上报磁盘 IO</span></div></div></div>';
     }
-    return '<div class="chart-card"><h3>磁盘 IO</h3><div class="kv-list">' + rows + '</div></div>';
+    return '<div class="chart-card chart-full"><h3>磁盘 IO <span class="chart-val" id="d-diskio-val"></span></h3>' +
+      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:5px" id="d-diskio-sub"></div>' +
+      '<div class="chart-box chart-box-lg"><canvas id="d-diskio"></canvas></div></div>';
   }
 
   function gpuCardHtml(s) {
@@ -701,7 +741,7 @@
     } else {
       rows = '<div class="kv-row"><span>状态</span><span>无 GPU</span></div>';
     }
-    return '<div class="chart-card"><h3>GPU</h3><div class="kv-list">' + rows + '</div></div>';
+    return '<div class="chart-card chart-full"><h3>GPU</h3><div class="kv-list">' + rows + '</div></div>';
   }
 
   /* ── 详情页图表 ─────────────────────────────────────── */
@@ -721,6 +761,46 @@
     if (extra) Object.assign(o, extra);
     return o;
   }
+
+  /* ── 十字准星虚线(所有图表通用)─────────────────────────
+     悬停查看数据时,画出对齐 X 轴/Y 轴的灰色虚线参考线(保持原有数据点与 tooltip) */
+  var crosshairPlugin = {
+    id: 'crosshair',
+    afterEvent: function (chart, args) {
+      var e = args.event;
+      if (!e) return;
+      if (e.type === 'mousemove') {
+        var prev = chart.$crosshair;
+        var next = args.inChartArea ? { x: e.x, y: e.y } : null;
+        var moved = !prev || !next || Math.abs(prev.x - next.x) > 0.5 || Math.abs(prev.y - next.y) > 0.5;
+        chart.$crosshair = next;
+        if (moved) chart.draw();
+      } else if (e.type === 'mouseout') {
+        if (chart.$crosshair) { chart.$crosshair = null; chart.draw(); }
+      }
+    },
+    afterDatasetsDraw: function (chart) {
+      var p = chart.$crosshair;
+      if (!p) return;
+      var area = chart.chartArea;
+      if (!area || p.x < area.left || p.x > area.right || p.y < area.top || p.y > area.bottom) return;
+      var active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
+      var vx = active.length ? active[0].element.x : p.x;   // 竖线对齐当前数据点
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(107,114,128,.55)';
+      ctx.moveTo(Math.round(vx) + 0.5, area.top);
+      ctx.lineTo(Math.round(vx) + 0.5, area.bottom);
+      ctx.moveTo(area.left, Math.round(p.y) + 0.5);
+      ctx.lineTo(area.right, Math.round(p.y) + 0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+  if (window.Chart && Chart.register) Chart.register(crosshairPlugin);
 
   function mkChart(id, cfg) {
     var c = document.getElementById(id);
@@ -762,14 +842,25 @@
       ] },
       options: baseOpts({ plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { enabled: true } } })
     });
-    ch.ping = mkChart('d-ping', {
+    // 磁盘使用率(已用容量)折线图——与内存/CPU 卡片同款图表
+    ch.disk = mkChart('d-disk', {
+      type: 'line',
+      data: { labels: [], datasets: [{ data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.12)', fill: true }] },
+      options: baseOpts({ plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: function (c) { return '已用: ' + fmtMB(c.parsed.y); } } } } })
+    });
+    // 磁盘 IO(读取/写入)
+    ch.diskio = mkChart('d-diskio', {
       type: 'line',
       data: { labels: [], datasets: [
-        { label: '电信', data: [], borderColor: '#ec4899', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
-        { label: '联通', data: [], borderColor: '#10b981', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
-        { label: '移动', data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
-        { label: '字节', data: [], borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.3 }
+        { label: '读取', data: [], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,.1)', fill: true },
+        { label: '写入', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.1)', fill: true }
       ] },
+      options: baseOpts({ plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { enabled: true, callbacks: { label: function (c) { return c.dataset.label + ': ' + fmtBytesSpeed(c.parsed.y); } } } } })
+    });
+    // Ping 延迟图表(数据集按后台 Ping 节点设置动态生成)
+    ch.ping = mkChart('d-ping', {
+      type: 'line',
+      data: { labels: [], datasets: [] },
       options: baseOpts({
         plugins: {
           legend: { display: false },
@@ -786,39 +877,35 @@
   function feedPingChart(s) {
     var ch = state.detailCharts && state.detailCharts.ping;
     if (!ch) return;
-    var hist = state.detailHistory;
-    if (!hist || !hist.length) {
-      ch.data.labels = [];
-      ch.data.datasets.forEach(function (ds) { ds.data = []; });
-      ch.update('none');
-      return;
-    }
+    var hist = state.detailHistory || [];
     var range = getRange(state.detailRangeKey);
     var labels = hist.map(function (r) { return range && range.hours >= 168 ? fmtDateShort(r.timestamp) : fmtTime(r.timestamp); });
-    var cols = ['ct', 'cu', 'cm', 'bd'];
-    var names = { ct: '电信', cu: '联通', cm: '移动', bd: '字节' };
-    var colors = { ct: '#ec4899', cu: '#10b981', cm: '#3b82f6', bd: '#f59e0b' };
-    ch.data.labels = labels;
+    var nodes = pingNodes();
+    var datasets = [];
     var badges = '';
-    cols.forEach(function (k, i) {
-      var series = hist.map(function (r) {
-        var v = r['ping_' + k];
-        return v == null || v === false ? null : Number(v);
+    nodes.forEach(function (n) {
+      // 历史序列 + 末尾追加当前实时值(与其它图表一致,曲线延伸到"现在")
+      var series = hist.map(function (r) { return pingVal(r['ping_' + n.key]); });
+      var cur = s ? pingVal(s['ping_' + n.key]) : null;
+      var hasAny = series.some(function (v) { return v != null; }) || cur != null;
+      if (!hasAny) return;   // false/缺失 = 该线路未配置或未上报 → 不显示
+      datasets.push({
+        label: n.name, data: series.concat(cur != null ? [cur] : []),
+        borderColor: n.color, borderWidth: 1.5, pointRadius: 0, tension: 0.3, spanGaps: false
       });
+      // 平均延迟 / 平均丢包徽章
       var valid = series.filter(function (v) { return v != null; });
       var avg = valid.length ? valid.reduce(function (a, b) { return a + b; }, 0) / valid.length : null;
-      var lossSeries = hist.map(function (r) { var v = r['loss_' + k]; return v == null || v === false ? null : Number(v); });
-      var lossValid = lossSeries.filter(function (v) { return v != null; });
-      var lossAvg = lossValid.length ? lossValid.reduce(function (a, b) { return a + b; }, 0) / lossValid.length : null;
-      ch.data.datasets[i].label = names[k];
-      ch.data.datasets[i].borderColor = colors[k];
-      ch.data.datasets[i].data = series;
+      var lossVals = hist.map(function (r) { return pingVal(r['loss_' + n.key]); }).filter(function (v) { return v != null; });
+      var lossAvg = lossVals.length ? lossVals.reduce(function (a, b) { return a + b; }, 0) / lossVals.length : null;
       if (avg != null || lossAvg != null) {
-        badges += '<span class="ping-badge"><i style="background:' + colors[k] + '"></i>' + names[k] + ' ' +
+        badges += '<span class="ping-badge"><i style="background:' + n.color + '"></i>' + esc(n.name) + ' ' +
           (avg != null ? avg.toFixed(1) + 'ms' : '--') +
           (lossAvg != null ? ' / ' + lossAvg.toFixed(1) + '%丢包' : '') + '</span>';
       }
     });
+    ch.data.labels = labels;
+    ch.data.datasets = datasets;
     ch.update('none');
     var b = $('#d-ping-badges');
     if (b) b.innerHTML = badges;
@@ -880,7 +967,7 @@
           try { localStorage.setItem(STORAGE_KEY_RANGE, fallback); } catch (ex) { /* ignore */ }
           $all('.range-btn').forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-range') === fallback); });
           var note = $('#range-note');
-          if (note) note.textContent = '未登录,已切换到访客可用的最大范围 (' + fallback + ')';
+          if (note) note.textContent = '未登录,已切换到访客可用的最大范围 (' + getRange(fallback).label + ')';
           loadDetailHistory(id);
           return;
         }
@@ -925,6 +1012,20 @@
     setSeries(ch.proc, col('processes'), Number(s.processes) || 0);
     setMulti(ch.net, [col('net_in_speed'), col('net_out_speed')], [Number(s.net_in_speed) || 0, Number(s.net_out_speed) || 0]);
     setMulti(ch.conn, [col('tcp_conn'), col('udp_conn')], [Number(s.tcp_conn) || 0, Number(s.udp_conn) || 0]);
+    // 磁盘使用率(已用容量,MB)
+    setSeries(ch.disk, col('disk_used'), Number(s.disk_used) || 0);
+    // 磁盘 IO(读/写,B/s):历史行优先取 disk 对象,兼容平铺字段
+    var diskField = function (r, nestedKey, flatKey) {
+      var d = r.disk || {};
+      if (d[nestedKey] != null) return Number(d[nestedKey]) || 0;
+      if (r[flatKey] != null) return Number(r[flatKey]) || 0;
+      return null;
+    };
+    var curDisk = s.disk || null;
+    setMulti(ch.diskio, [
+      hist.map(function (r) { return diskField(r, 'read_bps', 'disk_read_bps'); }),
+      hist.map(function (r) { return diskField(r, 'write_bps', 'disk_write_bps'); })
+    ], [curDisk ? Number(curDisk.read_bps) || 0 : null, curDisk ? Number(curDisk.write_bps) || 0 : null]);
 
     // 三网延迟趋势 + 平均/丢包徽章
     feedPingChart(s);
@@ -934,8 +1035,13 @@
     var ramSub = $('#d-ram-sub'); if (ramSub) ramSub.textContent = 'Swap: ' + fmtMBPair(s.swap_used, s.swap_total);
     var procV = $('#d-proc-val'); if (procV) procV.textContent = s.processes || 0;
     var dpct = s.disk_total ? ((Number(s.disk_used) || 0) / s.disk_total * 100) : 0;
-    var dbar = $('#d-disk-bar'); if (dbar) { dbar.style.width = dpct.toFixed(1) + '%'; dbar.style.background = barColor(dpct); }
-    var ddet = $('#d-disk-detail'); if (ddet) ddet.textContent = fmtMBPair(s.disk_used, s.disk_total);
+    var diskV = $('#d-disk-val'); if (diskV) diskV.textContent = dpct.toFixed(1) + '%';
+    var diskSub = $('#d-disk-sub'); if (diskSub) diskSub.textContent = '已用 ' + fmtMBPair(s.disk_used, s.disk_total);
+    var dioV = $('#d-diskio-val');
+    if (dioV && s.disk) dioV.textContent = '读 ' + fmtBytesSpeed(s.disk.read_bps) + ' · 写 ' + fmtBytesSpeed(s.disk.write_bps);
+    var dioSub = $('#d-diskio-sub');
+    if (dioSub && s.disk) dioSub.textContent = 'IOPS ' + (s.disk.read_iops || 0) + ' / ' + (s.disk.write_iops || 0) +
+      ' · await ' + (s.disk.await_ms || 0) + ' ms · 利用率 ' + (s.disk.util || 0) + '%';
     var netV = $('#d-net-val');
     if (netV) netV.innerHTML = '<span style="color:var(--green)">↓</span> ' + fmtBytesSpeed(s.net_in_speed) + ' | <span style="color:var(--accent)">↑</span> ' + fmtBytesSpeed(s.net_out_speed);
     var connV = $('#d-conn-val'); if (connV) connV.textContent = 'TCP ' + (s.tcp_conn || 0) + ' | UDP ' + (s.udp_conn || 0);
@@ -956,7 +1062,9 @@
   }
   function stopListLoop() {
     if (state.wsTimer) { clearInterval(state.wsTimer); state.wsTimer = null; }
-    closeWs(state.ws); state.ws = null;
+    clearWsExpiry();
+    closeWs(state.ws);
+    state.ws = null;
   }
   function startDetailLoop(id) {
     stopDetailLoop();
@@ -970,14 +1078,48 @@
   }
   function stopDetailLoop() {
     if (state.detailTimer) { clearInterval(state.detailTimer); state.detailTimer = null; }
-    closeWs(state.detailWs); state.detailWs = null;
+    clearWsExpiry();
+    closeWs(state.detailWs);
+    state.detailWs = null;
   }
   function updateDetailStatus(s) {
     var badge = $('.status-badge');
     if (!badge) return;
-    var online = (Date.now() - Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0)) <= ONLINE_THRESHOLD_MS;
+    var online = (Date.now() - Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0)) <= onlineThresholdMs();
     badge.classList.toggle('offline', !online);
     badge.textContent = online ? '在线' : '离线';
+  }
+
+  /* ── 实时连接时长限制(面板设置 frontend_ws_timeout_minutes)──
+     0 = 不按连接时长断开;>0 时到时关闭连接,由用户明确选择是否续订(不静默重连) */
+  var wsExpiryTimer = null;
+  function wsTimeoutMs() {
+    var m = state.config && Number(state.config.frontend_ws_timeout_minutes);
+    return m > 0 ? m * 60000 : 0;
+  }
+  function clearWsExpiry() {
+    if (wsExpiryTimer) { clearTimeout(wsExpiryTimer); wsExpiryTimer = null; }
+  }
+  function scheduleWsExpiry(onExpire) {
+    clearWsExpiry();
+    var ms = wsTimeoutMs();
+    if (!ms) return;
+    wsExpiryTimer = setTimeout(onExpire, ms);
+  }
+  function showWsRenewNotice(onRenew) {
+    var old = document.getElementById('ws-notice');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var box = el('div', 'ws-notice');
+    box.id = 'ws-notice';
+    box.appendChild(el('span', null, '实时连接已到期,已暂停推送'));
+    var btn = el('button', null, '继续订阅');
+    btn.type = 'button';
+    btn.addEventListener('click', function () {
+      if (box.parentNode) box.parentNode.removeChild(box);
+      onRenew();
+    });
+    box.appendChild(btn);
+    document.body.appendChild(box);
   }
 
   function closeWs(ws) {
@@ -1000,6 +1142,11 @@
       state.ws = ws;
       ws.onopen = function () {
         ws.send(JSON.stringify({ type: 'subscribe', scope: 'all', ids: state.servers.map(function (s) { return s.id; }) }));
+        scheduleWsExpiry(function () {
+          closeWs(ws);
+          if (state.ws === ws) state.ws = null;
+          showWsRenewNotice(function () { connectListWs(); });
+        });
       };
       ws.onmessage = function (ev) {
         var msg;
@@ -1024,6 +1171,13 @@
     try {
       var ws = new WebSocket(buildWsUrl(id));
       state.detailWs = ws;
+      ws.onopen = function () {
+        scheduleWsExpiry(function () {
+          closeWs(ws);
+          if (state.detailWs === ws) state.detailWs = null;
+          showWsRenewNotice(function () { connectDetailWs(id); });
+        });
+      };
       ws.onmessage = function (ev) {
         var msg;
         try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -1124,6 +1278,8 @@
     fetchJson('/api/config').then(function (c) {
       state.config = c;
       if (c.site_title) document.title = c.site_title;
+      // 线路显示名/颜色随面板后台 Ping 节点设置(custom_*_name / node_N_name)
+      state.pingNodes = resolvePingNodes();
     }).catch(function () { /* ignore */ }).finally(function () {
       route();
     });
