@@ -75,7 +75,16 @@
   .badge-tf{background:#10b981}
   .badge-v4{background:#a855f7}
   .badge-v6{background:#ec4899}
-  .badge-tag{background:#64748b}
+  /* 标签配色 — 对齐 CFSM-Theme-LuminaPlus 的彩色药丸(data-tag 取色) */
+  .badge-tag{padding:3px 8px;border-radius:8px;font-size:10.5px;border:1px solid color-mix(in srgb,var(--tag-fg) 14%,transparent);background:var(--tag-bg);color:var(--tag-fg)}
+  .badge-tag[data-tag="ruby"],.badge-tag[data-tag="red"],.badge-tag[data-tag="tomato"],.badge-tag[data-tag="crimson"]{--tag-bg:#fee2e2;--tag-fg:#b91c1c}
+  .badge-tag[data-tag="gold"],.badge-tag[data-tag="amber"],.badge-tag[data-tag="yellow"]{--tag-bg:rgba(233,162,59,.16);--tag-fg:#e9a23b}
+  .badge-tag[data-tag="orange"],.badge-tag[data-tag="bronze"],.badge-tag[data-tag="brown"]{--tag-bg:rgba(233,123,53,.16);--tag-fg:#e97b35}
+  .badge-tag[data-tag="green"],.badge-tag[data-tag="grass"],.badge-tag[data-tag="mint"],.badge-tag[data-tag="jade"],.badge-tag[data-tag="lime"]{--tag-bg:rgba(84,180,132,.16);--tag-fg:#54b484}
+  .badge-tag[data-tag="blue"],.badge-tag[data-tag="sky"],.badge-tag[data-tag="cyan"],.badge-tag[data-tag="teal"]{--tag-bg:rgba(78,129,238,.16);--tag-fg:#4e81ee}
+  .badge-tag[data-tag="violet"],.badge-tag[data-tag="purple"],.badge-tag[data-tag="plum"],.badge-tag[data-tag="iris"],.badge-tag[data-tag="indigo"],.badge-tag[data-tag="pink"]{--tag-bg:rgba(157,90,239,.16);--tag-fg:#9d5aef}
+  .badge-tag[data-tag="slate"]{--tag-bg:rgba(100,116,139,.16);--tag-fg:#64748b}
+  .badge-tag[data-tag="gray"],.badge-tag[data-tag=""]{--tag-bg:#e5e5e5;--tag-fg:#3f3f46}
 
   .ping-box{font-size:11px;margin-top:10px;display:flex;gap:10px;padding:6px 8px;border-radius:4px;flex-wrap:wrap;background:rgba(150,150,150,.1);border:1px solid rgba(150,150,150,.2)}
   .ping-box b{font-weight:bold}

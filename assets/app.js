@@ -242,6 +242,26 @@
     return isNaN(n) ? null : n;
   }
 
+  /* ── 标签配色(对齐 CFSM-Theme-LuminaPlus)───────────────
+     分隔符认 , ; ，；(后台提示是英文逗号,老站可能留分号);
+     支持 `标签<颜色>` 显式指定,否则按线路关键词推断:
+     cn2gia/9929/cmin2 → blue,163/4837/cmi → green,其余 → violet */
+  var TAG_SEPARATORS = /[;,；，]/;
+  function inferTagColor(label) {
+    var s = String(label).trim().toLowerCase();
+    if (/(cn2gia|9929|cmin2)/.test(s)) return 'blue';
+    if (/(163pp|163|4837|cmi)/.test(s)) return 'green';
+    return 'violet';
+  }
+  function parseTags(raw) {
+    if (!raw) return [];
+    return String(raw).split(TAG_SEPARATORS).map(function (s) { return s.trim(); }).filter(Boolean).map(function (item) {
+      var m = item.match(/^(.*?)<([a-zA-Z]+)>$/);
+      if (m) return { label: m[1].trim(), color: m[2].toLowerCase() };
+      return { label: item, color: inferTagColor(item) };
+    });
+  }
+
   function apiBase() {
     var meta = document.querySelector('meta[name="apiBase"]');
     if (meta && meta.content) {
@@ -457,14 +477,11 @@
     var last = Math.max(Number(s.last_updated) || 0, Number(s.timestamp) || 0);
     meta.push('更新: ' + fmtAgo(last));
 
-    // 标签 + IPv4/IPv6 徽章放在同一行
+    // 标签 + IPv4/IPv6 徽章放在同一行(标签按 LuminaPlus 配色)
     var badges = '';
-    if (s.tags) {
-      String(s.tags).split(',').forEach(function (t) {
-        var tag = t.trim();
-        if (tag) badges += '<span class="badge badge-tag">' + esc(tag) + '</span>';
-      });
-    }
+    parseTags(s.tags).forEach(function (t) {
+      badges += '<span class="badge badge-tag" data-tag="' + esc(t.color) + '">' + esc(t.label) + '</span>';
+    });
     if (s.ip_v4 === '1') badges += '<span class="badge badge-v4">IPv4</span>';
     if (s.ip_v6 === '1') badges += '<span class="badge badge-v6">IPv6</span>';
 
