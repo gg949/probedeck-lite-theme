@@ -1,9 +1,9 @@
 # ProbeDeck-lite-theme
 
 > ProbeDeck（探针台）的第三方主题 —— 移植自 Guoba 探针面板的界面风格。
-> 卡片 / 表格 / 点阵地图三视图 + 五套皮肤，纯静态、零外部 CDN 依赖。
+> 卡片 / 表格 / 点阵地图三视图 + 浅色简洁风格，纯静态、零外部 CDN 依赖。
 
-移植自：Guoba 探针面板（浅色简洁风 + 暗黑 / 硬派 / 玻璃 / 赛博皮肤）
+移植自：Guoba 探针面板（浅色简洁风）
 
 ---
 
@@ -31,25 +31,15 @@ ProbeDeck-lite-theme 是 [gg949/ProbeDeck](https://github.com/gg949/ProbeDeck/) 
 - **表格**：状态、名称、地区、系统、CPU、内存、存储、流量、下载、上传、更新时间，点击行进详情
 - **地图**：点阵世界地图，有节点的地区高亮为绿色并显示节点数量
 
-**五套皮肤**（右上角圆点切换，选择记忆在 localStorage）
+**外观**（固定浅色风格，与 Guoba 探针一致；右上角小齿轮图标为管理后台入口）
 
-| 皮肤 | 效果 |
-| --- | --- |
-| 经典浅色 | 原面板默认配色 |
-| 暗黑 | GitHub Dark 风 |
-| 硬派 | 黄底 + 黑粗边框 + 硬阴影（Neo-brutalism） |
-| 玻璃 | 蓝青渐变 + 毛玻璃卡片 |
-| 赛博 | 黑底 + 霓虹粉 / 青 |
+- 页头标题跟随后台「站点标题」（`/api/config` 的 `site_title`），无写死图标
+- 全部颜色走 CSS 变量，卡片白底 + 12px 圆角 + 轻阴影
 
 **详情页**（`#/server/:id`）
 
 - 信息卡：运行时间、架构、系统、内核、CPU、Load、上传 / 下载、本月流量、启动时间、价格、到期时间、标签
 - 五张实时曲线（Chart.js）：CPU、内存、进程数、网络速度（入 / 出）、TCP / UDP
-- **时间范围切换**（数据范围条，选择记忆在 localStorage）：实时 / 1小时 / 6小时 / 1天 / 2天 / 7天 / 14天 / 30天
-  - 对应后端 `/api/history/all` 的 `hours=1/6/24/48/168/336/720`，30 天封顶
-  - **实时档**：最近 30 分钟滚动窗口，由 WebSocket 推送 + 5 秒轮询持续填充
-  - **访客限制适配**：未登录时超出的档位自动降级到面板后台「访客历史范围」（`public_history_hours`，默认 24h，可配 48h/96h/7天/14天/30天）允许的最大档，并提示登录
-  - **保留天数适配**：后端按面板「历史数据保留天数」（`history_retention_days`）自动截断，14天/30天档只显示实际保留的数据
 - 磁盘使用进度条 + 已用 / 总量
 - 延迟 / 丢包：电信、联通、移动、字节 + 四个自定义节点（`false` 显示 `--`，`null` 显示超时）
 - 磁盘 IO：读取 / 写入速率、IOPS、await、利用率（探针不上报时显示"未上报"）
@@ -107,18 +97,17 @@ https://github.com/<你的用户名>/<仓库名>/tree/<分支名>/probedeck-lite
 
 ### 改标题
 
-后台外观设置里的「站点标题」会覆盖 `<title>`；页面内的 `🚀 探针台` 大字在
-`assets/app.js` 的 `renderShell()` 里搜 `site-title` 改。
+后台外观设置里的「站点标题」会同时覆盖浏览器标题和页面内的大标题（`/api/config` 的 `site_title`），无需改代码。
 
-### 改主题色 / 加深皮肤
+### 改主题色
 
-所有颜色都是 CSS 变量，集中在 `index.html` 顶部的 `:root` 和 `body.theme2` ~ `body.theme5` 里：
+所有颜色都是 CSS 变量，集中在 `index.html` 顶部的 `:root` 里：
 
 ```css
 :root{
-  --bg:#f4f5f7;        /* 页面背景 */
+  --bg:#f9fafb;        /* 页面背景 */
   --card:#ffffff;      /* 卡片背景 */
-  --accent:#3b82f6;    /* 强调色（进度条/管理按钮/链接） */
+  --accent:#3b82f6;    /* 强调色（进度条/按钮/链接） */
   --green:#10b981;     /* 在线 / 下载 */
   --red:#ef4444;       /* 离线 / 超时 */
   ...
@@ -126,13 +115,6 @@ https://github.com/<你的用户名>/<仓库名>/tree/<分支名>/probedeck-lite
 ```
 
 改完直接 push，面板重新拉取即生效。
-
-### 加第六套皮肤
-
-1. `index.html` 里加一段 `body.theme6{ ... }` 覆盖同名变量
-2. `index.html` 的 `.theme-picker` 里加一个 `<button class="theme-dot t6" data-theme="theme6">`
-3. `.theme-dot.t6{background:...}` 定义圆点颜色
-4. `assets/app.js` 顶部的 `THEMES` 数组加 `'theme6'`
 
 ### 重新生成地图数据
 
@@ -172,7 +154,7 @@ probedeck-lite-theme/
 | `GET /api/config` | 站点标题、版本号、三网显示名、自定义节点名、延迟窗口参数 |
 | `GET /api/servers` | 列表数据 + 聚合统计 + `sysConfig` 显示开关 |
 | `GET /api/server?id=` | 详情页初始数据 |
-| `GET /api/history/all?id=&hours=` | 详情页历史曲线（默认 24h，支持 `1/6/24/48/168/336/720`，14天/30天按保留天数截断） |
+| `GET /api/history/all?id=&hours=24` | 详情页历史曲线（默认 24h） |
 | `WS /api/ws?subscribe=all` | 列表页实时推送 |
 | `WS /api/ws?subscribe=<id>` | 详情页实时推送 |
 
@@ -192,6 +174,7 @@ probedeck-lite-theme/
 
 - 地图是点阵风格，不是 Leaflet 那种可缩放矢量地图（换 Leaflet 需要面板 CSP 放行 unpkg，没做）
 - 地图按**国家 / 地区**粒度统计节点数，不显示单台机器的精确坐标（ProbeDeck 不上报经纬度）
+- 详情页历史曲线固定取最近 24 小时，没有做时间范围切换（原面板也没有）
 - 表格视图没有按列排序（原面板也没有）
 
 ---

@@ -7,7 +7,6 @@
 
   /* ── 常量与工具 ─────────────────────────────────────── */
   var STORAGE_KEY_VIEW = 'guoba_preferred_view';
-  var STORAGE_KEY_THEME = 'guoba_theme';
   var STORAGE_KEY_RANGE = 'guoba_detail_range';
   var REFRESH_MS = 5000;
 
@@ -24,15 +23,15 @@
     { key: '336', label: '14天', hours: 336 },
     { key: '720', label: '30天', hours: 720 }
   ];
-  var REALTIME_WINDOW_MS = 30 * 60 * 1000; // 实时档展示最近 30 分钟滚动窗口
-  var REALTIME_KEEP_MS = 45 * 60 * 1000;  // 缓冲保留 45 分钟
+  var REALTIME_WINDOW_MS = 10 * 60 * 1000; // 实时档展示最近 10 分钟滚动窗口
+  var REALTIME_KEEP_MS = 15 * 60 * 1000;  // 缓冲保留 15 分钟
 
   function getRange(key) {
     for (var i = 0; i < RANGES.length; i++) if (RANGES[i].key === key) return RANGES[i];
     return RANGES[3]; // 默认 1天
   }
 
-  var THEMES = ['theme1', 'theme2', 'theme3', 'theme4', 'theme5'];
+
 
   var COUNTRY_COORDS = {
     US: [37.09, -95.71], CN: [35.86, 104.19], JP: [36.2, 138.25], HK: [22.31, 114.16],
@@ -258,41 +257,26 @@
     return m;
   }
 
-  /* ── 主题切换 ───────────────────────────────────────── */
-  function currentTheme() {
-    try { return localStorage.getItem(STORAGE_KEY_THEME) || 'theme1'; } catch (e) { return 'theme1'; }
-  }
-  function applyTheme(name) {
-    THEMES.forEach(function (t) { document.body.classList.remove(t); });
-    document.body.classList.add(name);
-    try { localStorage.setItem(STORAGE_KEY_THEME, name); } catch (e) { /* ignore */ }
-    $all('.theme-dot').forEach(function (d) {
-      d.classList.toggle('active', d.getAttribute('data-theme') === name);
-    });
-    // 地图配色跟随主题
+  /* ── 主题(固定浅色风格,与 Guoba 探针一致)────────────── */
+  function applyTheme() {
+    // 仅保留浅色外观;重绘地图浅色底图
     if (state.mapDrawn) drawMap(state.mapCounts || {});
   }
 
   /* ── 布局骨架 ───────────────────────────────────────── */
   function renderShell() {
     var app = $('#app');
+    var title = (state.config && state.config.site_title) || '探针台';
     app.innerHTML =
       '<div class="header">' +
-      '  <h1 id="site-title">🚀 探针台</h1>' +
+      '  <h1 id="site-title">' + esc(title) + '</h1>' +
       '  <div class="header-right">' +
       '    <div class="view-controls">' +
       '      <button class="toggle-btn" id="btn-card" data-view="card"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg> 卡片</button>' +
       '      <button class="toggle-btn" id="btn-table" data-view="table"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="18"></line><line x1="3" y1="18" x2="21" y2="6"></line></svg> 表格</button>' +
       '      <button class="toggle-btn" id="btn-map" data-view="map"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg> 地图</button>' +
       '    </div>' +
-      '    <div class="theme-picker" id="theme-picker">' +
-      '      <button class="theme-dot t1 active" data-theme="theme1" title="经典浅色"></button>' +
-      '      <button class="theme-dot t2" data-theme="theme2" title="暗黑"></button>' +
-      '      <button class="theme-dot t3" data-theme="theme3" title="硬派"></button>' +
-      '      <button class="theme-dot t4" data-theme="theme4" title="玻璃"></button>' +
-      '      <button class="theme-dot t5" data-theme="theme5" title="赛博"></button>' +
-      '    </div>' +
-      '    <a class="admin-btn" href="/admin#admin">管理</a>' +
+      '    <a class="admin-btn" href="/admin#admin" title="管理后台"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></a>' +
       '  </div>' +
       '</div>' +
       '<div class="filter-bar" id="filter-bar"></div>' +
@@ -312,9 +296,6 @@
 
     $all('.toggle-btn').forEach(function (b) {
       b.addEventListener('click', function () { switchView(b.getAttribute('data-view')); });
-    });
-    $all('.theme-dot').forEach(function (d) {
-      d.addEventListener('click', function () { applyTheme(d.getAttribute('data-theme')); });
     });
   }
 
@@ -536,7 +517,7 @@
     var STEP = 1.25;   // 与生成数据一致
     var COLS = Math.ceil(360 / STEP);
     var ROWS = Math.ceil(160 / STEP);
-    var isDark = document.body.classList.contains('theme2') || document.body.classList.contains('theme5');
+    var isDark = false; // 固定浅色风格
     var landColor = isDark ? '#2a303c' : '#d5dce2';
     var activeColor = '#10b981';
     var cells = state.worldCells || {};
@@ -686,7 +667,7 @@
         '<div class="disk-detail" id="' + id + '-detail"></div>';
     }
     var valId = id + '-val';
-    return '<div class="chart-card' + (kind === 'net' ? ' chart-full' : '') + '">' +
+    return '<div class="chart-card">' +
       '<h3>' + esc(title) + ' <span class="chart-val" id="' + valId + '"></span></h3>' +
       extra +
       (kind === 'disk' ? '' : '<div class="chart-box"><canvas id="' + id + '"></canvas></div>') +
@@ -812,7 +793,7 @@
         $all('.range-btn').forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-range') === key); });
         var note = $('#range-note');
         if (note) {
-          if (key === 'realtime') note.textContent = '最近 30 分钟滚动实时数据';
+          if (key === 'realtime') note.textContent = '最近 10 分钟滚动实时数据';
           else note.textContent = '';
         }
         var id = state.detailServer && state.detailServer.id;
@@ -871,7 +852,7 @@
   }
 
   function collectRealtimeSeries() {
-    // 实时档:从缓冲构建最近 30 分钟序列
+    // 实时档:从缓冲构建最近 10 分钟序列
     var now = Date.now();
     var cutoff = now - REALTIME_WINDOW_MS;
     var buf = [];
@@ -983,7 +964,8 @@
   function fmtTime(ts) {
     var d = new Date(Number(ts));
     if (isNaN(d.getTime())) return '';
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+    return String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' +
+      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
 
   /* ── 实时循环 ───────────────────────────────────────── */
@@ -1150,7 +1132,7 @@
       return;
     }
     // 大盘
-    applyTheme(currentTheme());
+    applyTheme();
     renderShell();
     startListLoop();
     refreshList();
@@ -1161,7 +1143,7 @@
 
   /* ── 启动 ───────────────────────────────────────────── */
   function boot() {
-    applyTheme(currentTheme());
+    applyTheme();
     fetchJson('/api/config').then(function (c) {
       state.config = c;
       if (c.site_title) document.title = c.site_title;
