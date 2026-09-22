@@ -10,11 +10,10 @@
   var STORAGE_KEY_RANGE = 'guoba_detail_range';
   var REFRESH_MS = 5000;
 
-  // 详情页时间范围:key / 显示名 / API hours(0=实时缓冲)
+  // 详情页时间范围:key / 显示名 / API hours
   // hours 与后端 /api/history/all 白名单一致(336=14天, 720=30天);
   // 后端会按面板 history_retention_days 自动截断超出的部分
   var RANGES = [
-    { key: 'realtime', label: '实时', hours: 0 },
     { key: '1', label: '1小时', hours: 1 },
     { key: '6', label: '6小时', hours: 6 },
     { key: '24', label: '1天', hours: 24 },
@@ -23,15 +22,11 @@
     { key: '336', label: '14天', hours: 336 },
     { key: '720', label: '30天', hours: 720 }
   ];
-  var REALTIME_WINDOW_MS = 10 * 60 * 1000; // 实时档展示最近 10 分钟滚动窗口
-  var REALTIME_KEEP_MS = 15 * 60 * 1000;  // 缓冲保留 15 分钟
 
   function getRange(key) {
     for (var i = 0; i < RANGES.length; i++) if (RANGES[i].key === key) return RANGES[i];
-    return RANGES[3]; // 默认 1天
+    return RANGES[2]; // 默认 1天
   }
-
-
 
   var COUNTRY_COORDS = {
     US: [37.09, -95.71], CN: [35.86, 104.19], JP: [36.2, 138.25], HK: [22.31, 114.16],
@@ -207,7 +202,6 @@
     detailTimer: null,
     detailWs: null,
     detailRangeKey: '24',
-    realtimeBuf: [],        // 实时档样本缓冲 [{ts, cpu, ram_used, net_in_speed, ...}]
     rangeUpdating: false,   // 时间范围切换请求中,防重复
     onlineIds: {}
   };
@@ -675,18 +669,9 @@
   }
 
   function latencyCardHtml(s, sc) {
-    var cols = ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'node_4'];
-    var names = {
-      ct: sc.custom_ct_name || '电信', cu: sc.custom_cu_name || '联通',
-      cm: sc.custom_cm_name || '移动', bd: sc.custom_bd_name || '字节',
-      node_1: sc.node_1_name || 'Node 1', node_2: sc.node_2_name || 'Node 2',
-      node_3: sc.node_3_name || 'Node 3', node_4: sc.node_4_name || 'Node 4'
-    };
-    var rows = '';
-    cols.forEach(function (k) {
-      rows += '<div class="kv-row"><span>' + esc(names[k]) + '</span><span>' + fmtPing(s['ping_' + k]) + '</span></div>';
-    });
-    return '<div class="chart-card"><h3>延迟 / 丢包 <span class="chart-val"></span></h3><div class="kv-list">' + rows + '</div></div>';
+    // 三网延迟趋势图(全宽):电信/联通/移动/字节 四条曲线 + 平均延迟/丢包徽章
+    return '<div class="chart-card chart-full"><h3>延迟 / 丢包 <span class="chart-val" id="d-ping-badges"></span></h3>' +
+      '<div class="chart-box chart-box-lg"><canvas id="d-ping"></canvas></div></div>';
   }
 
   function diskIoCardHtml(s) {
@@ -727,7 +712,10 @@
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       plugins: { legend: { display: false }, tooltip: { enabled: true } },
-      scales: { x: { display: false }, y: { beginAtZero: true, border: { display: false } } },
+      scales: {
+        x: { display: false, grid: { color: 'rgba(127,127,127,.15)', borderDash: [4, 4] } },
+        y: { beginAtZero: true, border: { display: false }, grid: { color: 'rgba(127,127,127,.15)', borderDash: [4, 4] } }
+      },
       elements: { point: { radius: 0, hitRadius: 8, hoverRadius: 4 }, line: { tension: 0.35, borderWidth: 2 } }
     };
     if (extra) Object.assign(o, extra);
@@ -774,6 +762,66 @@
       ] },
       options: baseOpts({ plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { enabled: true } } })
     });
+    ch.ping = mkChart('d-ping', {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: '电信', data: [], borderColor: '#ec4899', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: '联通', data: [], borderColor: '#10b981', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: '移动', data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: '字节', data: [], borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.3 }
+      ] },
+      options: baseOpts({
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true, mode: 'index', intersect: false, callbacks: { label: function (c) { return c.dataset.label + ': ' + (c.parsed.y != null ? Number(c.parsed.y).toFixed(1) + ' ms' : '--'); } } }
+        },
+        scales: {
+          x: { display: true, grid: { color: 'rgba(127,127,127,.15)', borderDash: [4, 4] }, ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#9ca3af' } },
+          y: { beginAtZero: true, grid: { color: 'rgba(127,127,127,.15)', borderDash: [4, 4] }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: function (v) { return v + 'ms'; } } }
+        }
+      })
+    });
+  }
+
+  function feedPingChart(s) {
+    var ch = state.detailCharts && state.detailCharts.ping;
+    if (!ch) return;
+    var hist = state.detailHistory;
+    if (!hist || !hist.length) {
+      ch.data.labels = [];
+      ch.data.datasets.forEach(function (ds) { ds.data = []; });
+      ch.update('none');
+      return;
+    }
+    var range = getRange(state.detailRangeKey);
+    var labels = hist.map(function (r) { return range && range.hours >= 168 ? fmtDateShort(r.timestamp) : fmtTime(r.timestamp); });
+    var cols = ['ct', 'cu', 'cm', 'bd'];
+    var names = { ct: '电信', cu: '联通', cm: '移动', bd: '字节' };
+    var colors = { ct: '#ec4899', cu: '#10b981', cm: '#3b82f6', bd: '#f59e0b' };
+    ch.data.labels = labels;
+    var badges = '';
+    cols.forEach(function (k, i) {
+      var series = hist.map(function (r) {
+        var v = r['ping_' + k];
+        return v == null || v === false ? null : Number(v);
+      });
+      var valid = series.filter(function (v) { return v != null; });
+      var avg = valid.length ? valid.reduce(function (a, b) { return a + b; }, 0) / valid.length : null;
+      var lossSeries = hist.map(function (r) { var v = r['loss_' + k]; return v == null || v === false ? null : Number(v); });
+      var lossValid = lossSeries.filter(function (v) { return v != null; });
+      var lossAvg = lossValid.length ? lossValid.reduce(function (a, b) { return a + b; }, 0) / lossValid.length : null;
+      ch.data.datasets[i].label = names[k];
+      ch.data.datasets[i].borderColor = colors[k];
+      ch.data.datasets[i].data = series;
+      if (avg != null || lossAvg != null) {
+        badges += '<span class="ping-badge"><i style="background:' + colors[k] + '"></i>' + names[k] + ' ' +
+          (avg != null ? avg.toFixed(1) + 'ms' : '--') +
+          (lossAvg != null ? ' / ' + lossAvg.toFixed(1) + '%丢包' : '') + '</span>';
+      }
+    });
+    ch.update('none');
+    var b = $('#d-ping-badges');
+    if (b) b.innerHTML = badges;
   }
 
   function destroyDetailCharts() {
@@ -792,13 +840,9 @@
         try { localStorage.setItem(STORAGE_KEY_RANGE, key); } catch (e) { /* ignore */ }
         $all('.range-btn').forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-range') === key); });
         var note = $('#range-note');
-        if (note) {
-          if (key === 'realtime') note.textContent = '最近 10 分钟滚动实时数据';
-          else note.textContent = '';
-        }
+        if (note) note.textContent = '';
         var id = state.detailServer && state.detailServer.id;
         if (!id) return;
-        state.realtimeBuf = [];
         state.rangeUpdating = false;
         loadDetailHistory(id);
       });
@@ -807,12 +851,6 @@
 
   function loadDetailHistory(id) {
     var range = getRange(state.detailRangeKey);
-    if (!range || range.hours <= 0) {
-      // 实时档:不需要历史请求,直接进入实时滚动窗口
-      state.detailHistory = [];
-      feedDetailCharts(state.detailServer);
-      return;
-    }
     var isLoggedIn = state.config && (state.config.authorization === true);
     // 访客可看历史上限:面板后台"访客历史范围" public_history_hours(默认24)
     // 合法值 [24, 48, 96, 168, 336, 720],即访客最多可看 30 天
@@ -851,79 +889,22 @@
     });
   }
 
-  function collectRealtimeSeries() {
-    // 实时档:从缓冲构建最近 10 分钟序列
-    var now = Date.now();
-    var cutoff = now - REALTIME_WINDOW_MS;
-    var buf = [];
-    for (var i = 0; i < state.realtimeBuf.length; i++) {
-      if (state.realtimeBuf[i].ts >= cutoff) buf.push(state.realtimeBuf[i]);
-    }
-    // 缓冲按时间排序(ws 可能乱序/重复)
-    buf.sort(function (a, b) { return a.ts - b.ts; });
-    var dedup = [];
-    for (var j = 0; j < buf.length; j++) {
-      if (!dedup.length || Math.abs(dedup[dedup.length - 1].ts - buf[j].ts) > 1000) dedup.push(buf[j]);
-    }
-    return dedup;
-  }
-
-  function pushRealtimeSample(data) {
-    // 从 WS/轮询的增量数据中提取图表字段,追加进实时缓冲
-    if (!data || typeof data !== 'object') return;
-    var s = state.detailServer;
-    var cpu = data.cpu != null ? Number(data.cpu) : (s ? Number(s.cpu) : null);
-    var ramUsed = data.ram_used != null ? Number(data.ram_used) : (s ? Number(s.ram_used) : null);
-    var netIn = data.net_in_speed != null ? Number(data.net_in_speed) : (s ? Number(s.net_in_speed) : null);
-    var netOut = data.net_out_speed != null ? Number(data.net_out_speed) : (s ? Number(s.net_out_speed) : null);
-    var proc = data.processes != null ? Number(data.processes) : (s ? Number(s.processes) : null);
-    var tcp = data.tcp_conn != null ? Number(data.tcp_conn) : (s ? Number(s.tcp_conn) : null);
-    var udp = data.udp_conn != null ? Number(data.udp_conn) : (s ? Number(s.udp_conn) : null);
-    var now = Date.now();
-    if (cpu == null && ramUsed == null && netIn == null && netOut == null && proc == null) return;
-    if (state.realtimeBuf.length && Math.abs(state.realtimeBuf[state.realtimeBuf.length - 1].ts - now) < 800) {
-      // 同一秒内 WS 增量 + 轮询全量会先后到达:合并字段,避免丢数据
-      var lastSample = state.realtimeBuf[state.realtimeBuf.length - 1];
-      lastSample.ts = now;
-      if (cpu != null) lastSample.cpu = cpu;
-      if (ramUsed != null) lastSample.ram_used = ramUsed;
-      if (netIn != null) lastSample.net_in_speed = netIn;
-      if (netOut != null) lastSample.net_out_speed = netOut;
-      if (proc != null) lastSample.processes = proc;
-      if (tcp != null) lastSample.tcp_conn = tcp;
-      if (udp != null) lastSample.udp_conn = udp;
-      return;
-    }
-    state.realtimeBuf.push({ ts: now, cpu: cpu, ram_used: ramUsed, net_in_speed: netIn, net_out_speed: netOut, processes: proc, tcp_conn: tcp, udp_conn: udp });
-    // 裁剪旧样本
-    var cutoff = Date.now() - REALTIME_KEEP_MS;
-    while (state.realtimeBuf.length > 1 && state.realtimeBuf[0].ts < cutoff) state.realtimeBuf.shift();
-  }
-
   function feedDetailCharts(s) {
     if (!s) return;
     var ch = state.detailCharts;
     var range = getRange(state.detailRangeKey);
-    var hist, labels, isRealtime = range && range.hours <= 0;
-
-    if (isRealtime) {
-      hist = collectRealtimeSeries();
-      labels = hist.map(function (r) { return fmtTime(r.ts); });
-    } else {
-      hist = state.detailHistory;
-      labels = hist.map(function (r) { return fmtTime(r.timestamp); });
-      // 长范围显示日期
-      if (range && range.hours >= 168) {
-        labels = hist.map(function (r) { return fmtDateShort(r.timestamp); });
-      }
+    var hist = state.detailHistory;
+    var labels = hist.map(function (r) { return fmtTime(r.timestamp); });
+    // 长范围显示日期
+    if (range && range.hours >= 168) {
+      labels = hist.map(function (r) { return fmtDateShort(r.timestamp); });
     }
 
-    // 实时档直接使用缓冲序列,不再追加尾点(缓冲里已含最新样本)
     // 历史档在序列尾部追加当前实时值,让曲线延伸到"现在"
     var setSeries = function (chart, series, extraVal) {
       if (!chart) return;
       chart.data.labels = labels;
-      var data = isRealtime ? series : series.concat(extraVal != null ? [extraVal] : []);
+      var data = series.concat(extraVal != null ? [extraVal] : []);
       chart.data.datasets[0].data = data;
       chart.update('none');
     };
@@ -932,22 +913,21 @@
       chart.data.labels = labels;
       seriesList.forEach(function (arr, i) {
         if (chart.data.datasets[i]) {
-          var d = isRealtime ? (arr || []) : (arr || []).concat(vals && vals[i] != null ? [vals[i]] : []);
-          chart.data.datasets[i].data = d;
+          chart.data.datasets[i].data = (arr || []).concat(vals && vals[i] != null ? [vals[i]] : []);
         }
       });
       chart.update('none');
     };
     var col = function (key) { return hist.map(function (r) { return r[key] != null ? r[key] : null; }); };
 
-    // 实时档使用带时间戳的样本读取;历史档使用 rows
-    var colR = isRealtime ? function (key) { return hist.map(function (r) { return r[key] != null ? r[key] : null; }); } : col;
+    setSeries(ch.cpu, col('cpu'), Number(s.cpu) || 0);
+    setSeries(ch.ram, col('ram_used'), Number(s.ram_used) || 0);
+    setSeries(ch.proc, col('processes'), Number(s.processes) || 0);
+    setMulti(ch.net, [col('net_in_speed'), col('net_out_speed')], [Number(s.net_in_speed) || 0, Number(s.net_out_speed) || 0]);
+    setMulti(ch.conn, [col('tcp_conn'), col('udp_conn')], [Number(s.tcp_conn) || 0, Number(s.udp_conn) || 0]);
 
-    setSeries(ch.cpu, colR('cpu'), Number(s.cpu) || 0);
-    setSeries(ch.ram, colR('ram_used'), Number(s.ram_used) || 0);
-    setSeries(ch.proc, colR('processes'), Number(s.processes) || 0);
-    setMulti(ch.net, [colR('net_in_speed'), colR('net_out_speed')], [Number(s.net_in_speed) || 0, Number(s.net_out_speed) || 0]);
-    setMulti(ch.conn, [colR('tcp_conn'), colR('udp_conn')], [Number(s.tcp_conn) || 0, Number(s.udp_conn) || 0]);
+    // 三网延迟趋势 + 平均/丢包徽章
+    feedPingChart(s);
 
     var cpuV = $('#d-cpu-val'); if (cpuV) cpuV.textContent = (Number(s.cpu) || 0).toFixed(1) + '%';
     var ramV = $('#d-ram-val'); if (ramV) ramV.textContent = (s.ram_total ? ((Number(s.ram_used) || 0) / s.ram_total * 100).toFixed(1) : '0') + '%';
@@ -983,7 +963,6 @@
     state.detailTimer = setInterval(function () {
       fetchJson('/api/server?id=' + encodeURIComponent(id)).then(function (s) {
         state.detailServer = s;
-        pushRealtimeSample(s);
         feedDetailCharts(s);
         updateDetailStatus(s);
       }).catch(function () { /* ignore */ });
@@ -1055,7 +1034,6 @@
           (u.samples || []).forEach(function (sm) {
             var data = sm.data || sm.payload || sm.metrics || {};
             mergeServer(state.detailServer, data);
-            pushRealtimeSample(data);
             last = data;
           });
           if (last) {
@@ -1127,7 +1105,6 @@
         for (var i = 0; i < RANGES.length; i++) if (RANGES[i].key === saved) ok = true;
         state.detailRangeKey = ok ? saved : '24';
       } catch (e) { state.detailRangeKey = '24'; }
-      state.realtimeBuf = [];
       renderDetail(decodeURIComponent(m[1]));
       return;
     }
