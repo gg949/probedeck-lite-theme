@@ -45,6 +45,11 @@ ProbeDeck-lite-theme 是 [gg949/ProbeDeck](https://github.com/gg949/ProbeDeck/) 
 
 - 信息卡：运行时间、架构、系统、内核、CPU、Load、上传 / 下载、本月流量、启动时间、价格、到期时间、标签
 - 五张实时曲线（Chart.js）：CPU、内存、进程数、网络速度（入 / 出）、TCP / UDP
+- **时间范围切换**（数据范围条，选择记忆在 localStorage）：实时 / 1小时 / 6小时 / 1天 / 2天 / 7天 / 14天 / 30天
+  - 对应后端 `/api/history/all` 的 `hours=1/6/24/48/168/336/720`，30 天封顶
+  - **实时档**：最近 30 分钟滚动窗口，由 WebSocket 推送 + 5 秒轮询持续填充
+  - **访客限制适配**：未登录时超出的档位自动降级到面板后台「访客历史范围」（`public_history_hours`，默认 24h，可配 48h/96h/7天/14天/30天）允许的最大档，并提示登录
+  - **保留天数适配**：后端按面板「历史数据保留天数」（`history_retention_days`）自动截断，14天/30天档只显示实际保留的数据
 - 磁盘使用进度条 + 已用 / 总量
 - 延迟 / 丢包：电信、联通、移动、字节 + 四个自定义节点（`false` 显示 `--`，`null` 显示超时）
 - 磁盘 IO：读取 / 写入速率、IOPS、await、利用率（探针不上报时显示"未上报"）
@@ -167,7 +172,7 @@ probedeck-lite-theme/
 | `GET /api/config` | 站点标题、版本号、三网显示名、自定义节点名、延迟窗口参数 |
 | `GET /api/servers` | 列表数据 + 聚合统计 + `sysConfig` 显示开关 |
 | `GET /api/server?id=` | 详情页初始数据 |
-| `GET /api/history/all?id=&hours=24` | 详情页历史曲线（默认 24h） |
+| `GET /api/history/all?id=&hours=` | 详情页历史曲线（默认 24h，支持 `1/6/24/48/168/336/720`，14天/30天按保留天数截断） |
 | `WS /api/ws?subscribe=all` | 列表页实时推送 |
 | `WS /api/ws?subscribe=<id>` | 详情页实时推送 |
 
@@ -187,7 +192,6 @@ probedeck-lite-theme/
 
 - 地图是点阵风格，不是 Leaflet 那种可缩放矢量地图（换 Leaflet 需要面板 CSP 放行 unpkg，没做）
 - 地图按**国家 / 地区**粒度统计节点数，不显示单台机器的精确坐标（ProbeDeck 不上报经纬度）
-- 详情页历史曲线固定取最近 24 小时，没有做时间范围切换（原面板也没有）
 - 表格视图没有按列排序（原面板也没有）
 
 ---

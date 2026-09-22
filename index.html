@@ -7,10 +7,10 @@
 <title>ProbeDeck Lite</title>
 <style>
   :root{
-    --bg:#f4f5f7; --card:#ffffff; --text:#333333; --text-strong:#111111;
+    --bg:#f9fafb; --card:#ffffff; --text:#333333; --text-strong:#111111;
     --text-muted:#6b7280; --text-faint:#9ca3af; --border:#e5e7eb; --border-soft:#f1f5f9;
     --accent:#3b82f6; --accent-soft:rgba(59,130,246,.1); --green:#10b981; --red:#ef4444;
-    --shadow:0 2px 8px rgba(0,0,0,.04); --shadow-hover:0 8px 15px rgba(0,0,0,.08);
+    --shadow:0 1px 3px rgba(0,0,0,.1); --shadow-hover:0 8px 15px rgba(0,0,0,.08);
     --bar-track:#e5e7eb; --th-bg:#f8fafc; --th-text:#64748b; --tag-bg:#ffffff;
     --map-land:#d5dce2; --map-line:rgba(255,255,255,.2); --map-bg:#b1c2d4;
   }
@@ -180,6 +180,16 @@
   .map-badge{background:var(--green);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid var(--card);box-shadow:0 2px 6px rgba(0,0,0,.4)}
 
   /* ── detail page ────────────────────────── */
+  .range-bar{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:8px 12px;align-items:center}
+  .range-bar .range-label{font-size:12px;color:var(--text-muted);font-weight:600;margin-right:4px}
+  .range-btn{padding:5px 12px;border:1px solid transparent;background:transparent;border-radius:8px;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;font-family:inherit}
+  .range-btn:hover{color:var(--text-strong);background:var(--border-soft)}
+  .range-btn.active{background:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  body.theme3 .range-btn{border-radius:0}
+  body.theme3 .range-btn.active{background:#000;color:#fff;border:1px solid #000}
+  body.theme4 .range-btn.active{background:rgba(255,255,255,.35);color:#fff}
+  body.theme5 .range-btn.active{background:#0b0c10;color:#0ff;border:1px solid #0ff;box-shadow:0 0 10px rgba(0,255,255,.4);border-radius:0}
+  .range-note{font-size:11px;color:var(--text-faint);margin-left:auto}
   .back-btn{display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;color:var(--text-muted);text-decoration:none;font-size:14px;font-weight:600;padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
   .back-btn:hover{color:var(--accent);border-color:var(--accent)}
   .header-card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:20px;margin-bottom:20px}
